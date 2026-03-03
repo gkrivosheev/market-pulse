@@ -16,7 +16,7 @@ export default async function AssetDetailPage({ params }: Props) {
   if (!user) redirect('/');
 
   // Fetch all data in parallel
-  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const today = new Date().toISOString().split('T')[0];
   const fortyFiveDaysAgo = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
@@ -30,8 +30,8 @@ export default async function AssetDetailPage({ params }: Props) {
   ] = await Promise.all([
     supabase.from('assets').select('*').eq('id', assetId).single(),
     supabase.from('watchlist').select('*').eq('user_id', user.id).eq('asset_id', assetId).single(),
-    supabase.from('daily_prices').select('*').eq('asset_id', assetId).gte('date', ninetyDaysAgo).order('date', { ascending: true }),
-    supabase.from('anomaly_scores').select('*').eq('asset_id', assetId).gte('date', ninetyDaysAgo).order('date', { ascending: true }),
+    supabase.from('daily_prices').select('*').eq('asset_id', assetId).gte('date', oneYearAgo).order('date', { ascending: true }),
+    supabase.from('anomaly_scores').select('*').eq('asset_id', assetId).gte('date', oneYearAgo).order('date', { ascending: true }),
     supabase.from('ai_analysis').select('*').eq('asset_id', assetId).eq('date', today).single(),
     supabase.from('news').select('*').eq('asset_id', assetId).gte('fetched_date', fortyFiveDaysAgo).order('published_at', { ascending: false }),
   ]);

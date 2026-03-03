@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { fetchTimeSeries } from '@/lib/twelve-data';
 import { fetchCompanyNews, fetchCryptoNews, fetchGeneralNews, getKeywordsForAsset } from '@/lib/finnhub';
 import { computeAnomalyScores, computeTrendScores, classifyScores, getNewsWindowDays } from '@/lib/anomaly';
-import { generateAnalysis } from '@/lib/claude';
+import { generateAnalysis, generateMarketSummary } from '@/lib/claude';
 import { sendDailyDigest } from '@/lib/email';
 import { Asset, DailyPrice, NewsArticle, AnomalyScore } from '@/types';
 
@@ -129,6 +129,7 @@ export async function POST(request: Request) {
     newsFetched: 0,
     scoresComputed: 0,
     analysesGenerated: 0,
+    marketSummaryGenerated: false,
     emailsSent: 0,
     errors: [] as string[],
   };
@@ -291,6 +292,48 @@ export async function POST(request: Request) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[Cron] AI analysis error for ${asset.id}:`, msg);
       results.errors.push(`AI:${asset.id}: ${msg}`);
+    }
+  }
+
+  // Step 6.5: Generate executive market summary with web search
+  if (flaggedAssets.length > 0) {
+    try {
+      // Gather the analyses we just generated
+      const { data: freshAnalyses } = await supabase
+        .from('ai_analysis')
+        .select('*')
+        .in('asset_id', flaggedAssets.map((a) => (a as Asset).id))
+        .eq('date', today);
+
+      const analysisMap = new Map((freshAnalyses ?? []).map((a) => [a.asset_id, a.analysis as string]));
+
+      const flaggedContexts = flaggedAssets
+        .map((asset) => {
+          const score = assetScores.get((asset as Asset).id);
+          const analysis = analysisMap.get((asset as Asset).id);
+          if (!score || !analysis) return null;
+          return { asset: asset as Asset, score, analysis };
+        })
+        .filter(Boolean);
+
+      if (flaggedContexts.length > 0) {
+        const summary = await generateMarketSummary(flaggedContexts, today);
+        if (summary) {
+          await supabase.from('market_summary').upsert({
+            date: today,
+            summary: summary.summary,
+            market_regime: summary.market_regime,
+            flagged_count: flaggedContexts.length,
+            sources: summary.sources,
+            model_used: 'claude-sonnet-4-20250514',
+          }, { onConflict: 'date' });
+          results.marketSummaryGenerated = true;
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[Cron] Market summary error:', msg);
+      results.errors.push(`MarketSummary: ${msg}`);
     }
   }
 

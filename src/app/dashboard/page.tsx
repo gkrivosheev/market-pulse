@@ -1,11 +1,12 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { DashboardAsset } from '@/types';
+import { DashboardAsset, MarketSummary } from '@/types';
 import DashboardClient from '@/components/dashboard/DashboardClient';
 
 async function getDashboardData(userId: string): Promise<{
   assets: DashboardAsset[];
   lastUpdated: string | null;
+  marketSummary: MarketSummary | null;
 }> {
   const supabase = await createClient();
 
@@ -16,7 +17,7 @@ async function getDashboardData(userId: string): Promise<{
     .eq('user_id', userId);
 
   if (!watchlist || watchlist.length === 0) {
-    return { assets: [], lastUpdated: null };
+    return { assets: [], lastUpdated: null, marketSummary: null };
   }
 
   const assetIds = watchlist.map((w) => w.asset_id);
@@ -27,8 +28,8 @@ async function getDashboardData(userId: string): Promise<{
     .toISOString()
     .split('T')[0];
 
-  // Fetch latest anomaly scores, prices, and AI analysis in parallel
-  const [{ data: anomalyScores }, { data: prices }, { data: aiAnalyses }] =
+  // Fetch latest anomaly scores, prices, AI analysis, and market summary in parallel
+  const [{ data: anomalyScores }, { data: prices }, { data: aiAnalyses }, { data: marketSummaryRow }] =
     await Promise.all([
       supabase
         .from('anomaly_scores')
@@ -46,6 +47,11 @@ async function getDashboardData(userId: string): Promise<{
         .select('*')
         .in('asset_id', assetIds)
         .eq('date', today),
+      supabase
+        .from('market_summary')
+        .select('*')
+        .eq('date', today)
+        .single(),
     ]);
 
   // Build asset map for latest scores
@@ -78,7 +84,7 @@ async function getDashboardData(userId: string): Promise<{
   // Find last updated date
   const lastUpdated = anomalyScores?.[0]?.computed_at ?? null;
 
-  return { assets, lastUpdated };
+  return { assets, lastUpdated, marketSummary: (marketSummaryRow as MarketSummary) ?? null };
 }
 
 export default async function DashboardPage() {
@@ -97,13 +103,14 @@ export default async function DashboardPage() {
     .eq('id', user.id)
     .single();
 
-  const { assets, lastUpdated } = await getDashboardData(user.id);
+  const { assets, lastUpdated, marketSummary } = await getDashboardData(user.id);
 
   return (
     <DashboardClient
       initialAssets={assets}
       profile={profile}
       lastUpdated={lastUpdated}
+      marketSummary={marketSummary}
       userId={user.id}
     />
   );

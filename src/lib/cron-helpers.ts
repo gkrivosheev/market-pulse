@@ -3,42 +3,13 @@ import { fetchTimeSeries } from '@/lib/twelve-data';
 import { fetchCompanyNews, fetchCryptoNews, fetchGeneralNews, getKeywordsForAsset } from '@/lib/finnhub';
 import { Asset, DailyPrice } from '@/types';
 
-// Asset types that have no meaningful volume data (mirrors anomaly.ts)
-const NO_VOLUME_TYPES = ['fx', 'metal', 'bond'];
-
 /**
- * Returns a multiplier to scale today's partial volume to a projected full-day
- * volume, or null if the market session is complete (no adjustment needed) or the
- * session is too young to project reliably (< 10% elapsed).
- *
- * Crypto: 24h UTC-day session.
- * Equities / everything else: US market hours 9:30–16:00 ET.
+ * Strip today's partial bar from a price series so anomaly scores are always
+ * computed against complete trading days only.
  */
-export function getVolumeProjectionFactor(assetType: string): number | null {
-  if (NO_VOLUME_TYPES.includes(assetType)) return null;
-
-  const now = new Date();
-
-  if (assetType === 'crypto') {
-    const secondsElapsed =
-      now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
-    const fraction = secondsElapsed / (24 * 3600);
-    if (fraction < 0.1) return null; // Too early, projection too uncertain
-    return 1 / fraction;
-  }
-
-  // Equity / other: US market hours 9:30–16:00 ET
-  const etNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const etMinutes = etNow.getHours() * 60 + etNow.getMinutes();
-  const marketOpen  = 9 * 60 + 30; // 570 min
-  const marketClose = 16 * 60;     // 960 min
-
-  if (etMinutes >= marketClose) return null; // Session complete, full day volume
-  if (etMinutes <  marketOpen)  return null; // Pre-market, no reliable volume yet
-
-  const fraction = (etMinutes - marketOpen) / (marketClose - marketOpen);
-  if (fraction < 0.1) return null; // First ~39 min, projection too noisy
-  return 1 / fraction;
+export function excludePartialDay(prices: DailyPrice[], today: string): DailyPrice[] {
+  if (prices.length === 0) return prices;
+  return prices[prices.length - 1].date === today ? prices.slice(0, -1) : prices;
 }
 
 export function createServiceClient() {

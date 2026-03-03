@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { computeAnomalyScores, computeTrendScores, classifyScores } from '@/lib/anomaly';
-import { Asset, DailyPrice } from '@/types';
-import { createServiceClient, verifyCronAuth, fetchAndStorePrices, fetchAndStoreNews, getVolumeProjectionFactor } from '@/lib/cron-helpers';
+import { Asset } from '@/types';
+import { createServiceClient, verifyCronAuth, fetchAndStorePrices, fetchAndStoreNews, excludePartialDay } from '@/lib/cron-helpers';
 
 export const maxDuration = 300;
 
@@ -59,19 +59,10 @@ export async function POST(request: Request) {
         await fetchAndStoreNews(supabase, asset, newFromDate, newToDate);
         results.newsFetched++;
 
-        if (prices.length >= 5) {
-          // If today's bar is still in-session, scale its volume up to project
-          // full-day volume so the z-score isn't artificially low.
-          const latestDate = prices[prices.length - 1]?.date;
-          const factor = latestDate === today ? getVolumeProjectionFactor(asset.asset_type) : null;
-          const pricesToScore: DailyPrice[] = factor !== null
-            ? prices.map((p, i) =>
-                i === prices.length - 1 && p.volume != null
-                  ? { ...p, volume: Math.round(p.volume * factor) }
-                  : p
-              )
-            : prices;
+        // Score only against complete trading days — drop today's partial bar.
+        const pricesToScore = excludePartialDay(prices, today);
 
+        if (pricesToScore.length >= 5) {
           const anomaly = computeAnomalyScores(pricesToScore, asset.asset_type);
           const trend = computeTrendScores(pricesToScore);
           const combined = classifyScores(anomaly, trend);

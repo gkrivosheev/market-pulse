@@ -5,6 +5,7 @@ import { fetchCompanyNews, fetchCryptoNews, fetchGeneralNews, getKeywordsForAsse
 import { computeAnomalyScores, computeTrendScores, classifyScores, getNewsWindowDays } from '@/lib/anomaly';
 import { generateAnalysis, generateMarketSummary } from '@/lib/claude';
 import { sendDailyDigest } from '@/lib/email';
+import { getVolumeProjectionFactor } from '@/lib/cron-helpers';
 import { Asset, DailyPrice, NewsArticle, AnomalyScore } from '@/types';
 
 export const maxDuration = 300; // 5 minutes
@@ -182,8 +183,18 @@ export async function POST(request: Request) {
 
         // Compute anomaly + trend scores
         if (prices.length >= 5) {
-          const anomaly = computeAnomalyScores(prices, asset.asset_type);
-          const trend = computeTrendScores(prices);
+          const latestDate = prices[prices.length - 1]?.date;
+          const factor = latestDate === today ? getVolumeProjectionFactor(asset.asset_type) : null;
+          const pricesToScore: DailyPrice[] = factor !== null
+            ? prices.map((p, i) =>
+                i === prices.length - 1 && p.volume != null
+                  ? { ...p, volume: Math.round(p.volume * factor) }
+                  : p
+              )
+            : prices;
+
+          const anomaly = computeAnomalyScores(pricesToScore, asset.asset_type);
+          const trend = computeTrendScores(pricesToScore);
           const combined = classifyScores(anomaly, trend);
 
           const scoreRow = {

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { computeAnomalyScores, computeTrendScores, classifyScores } from '@/lib/anomaly';
-import { Asset } from '@/types';
-import { createServiceClient, verifyCronAuth, fetchAndStorePrices, fetchAndStoreNews } from '@/lib/cron-helpers';
+import { Asset, DailyPrice } from '@/types';
+import { createServiceClient, verifyCronAuth, fetchAndStorePrices, fetchAndStoreNews, getVolumeProjectionFactor } from '@/lib/cron-helpers';
 
 export const maxDuration = 300;
 
@@ -60,8 +60,20 @@ export async function POST(request: Request) {
         results.newsFetched++;
 
         if (prices.length >= 5) {
-          const anomaly = computeAnomalyScores(prices, asset.asset_type);
-          const trend = computeTrendScores(prices);
+          // If today's bar is still in-session, scale its volume up to project
+          // full-day volume so the z-score isn't artificially low.
+          const latestDate = prices[prices.length - 1]?.date;
+          const factor = latestDate === today ? getVolumeProjectionFactor(asset.asset_type) : null;
+          const pricesToScore: DailyPrice[] = factor !== null
+            ? prices.map((p, i) =>
+                i === prices.length - 1 && p.volume != null
+                  ? { ...p, volume: Math.round(p.volume * factor) }
+                  : p
+              )
+            : prices;
+
+          const anomaly = computeAnomalyScores(pricesToScore, asset.asset_type);
+          const trend = computeTrendScores(pricesToScore);
           const combined = classifyScores(anomaly, trend);
 
           await supabase

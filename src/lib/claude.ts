@@ -225,7 +225,7 @@ REGIME: <one of: risk-on, risk-off, mixed, normal>`;
     const sources: { title: string; url: string }[] = [];
     for (const block of message.content) {
       // Web search tool results contain an array of search result objects
-      if (block.type === 'tool_result') {
+      if (block.type === 'web_search_tool_result') {
         const content = (block as { type: string; content?: unknown }).content;
         if (Array.isArray(content)) {
           for (const item of content) {

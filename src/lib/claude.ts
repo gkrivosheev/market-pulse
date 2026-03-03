@@ -202,7 +202,7 @@ REGIME: <one of: risk-on, risk-off, mixed, normal>`;
           type: 'web_search_20250305' as const,
           name: 'web_search',
           max_uses: Math.min(flagged.length + 2, 10),
-        } as Parameters<typeof client.messages.create>[0]['tools'][0],
+        } as NonNullable<Parameters<typeof client.messages.create>[0]['tools']>[0],
       ],
       messages: [{ role: 'user', content: prompt }],
     });

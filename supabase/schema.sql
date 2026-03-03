@@ -176,3 +176,18 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Daily AI executive market summary (web-search powered)
+CREATE TABLE public.market_summary (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date DATE NOT NULL UNIQUE,
+  summary TEXT NOT NULL,
+  market_regime TEXT CHECK (market_regime IN ('risk-on', 'risk-off', 'mixed', 'normal')),
+  flagged_count INTEGER NOT NULL DEFAULT 0,
+  sources JSONB DEFAULT '[]',
+  model_used TEXT DEFAULT 'claude-sonnet-4-20250514',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.market_summary ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can view market_summary" ON public.market_summary FOR SELECT TO authenticated USING (true);

@@ -2,6 +2,18 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Asset, AnomalyScore, NewsArticle, DailyPrice } from '@/types';
 import { getNewsWindowDays } from './anomaly';
 
+interface MarketSummaryResult {
+  summary: string;
+  market_regime: 'risk-on' | 'risk-off' | 'mixed' | 'normal';
+  sources: { title: string; url: string }[];
+}
+
+interface FlaggedAssetContext {
+  asset: Asset;
+  score: AnomalyScore;
+  analysis: string; // the per-asset analysis already generated
+}
+
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
@@ -133,6 +145,104 @@ Respond in JSON format:
     return result;
   } catch (error) {
     console.error('Claude API error:', error);
+    return null;
+  }
+}
+
+export async function generateMarketSummary(
+  flagged: FlaggedAssetContext[],
+  date: string
+): Promise<MarketSummaryResult | null> {
+  if (flagged.length === 0) return null;
+
+  const assetLines = flagged
+    .sort((a, b) => (b.score.combined_score ?? 0) - (a.score.combined_score ?? 0))
+    .map((f) => {
+      const s = f.score;
+      const ret = [
+        s.return_1w !== null ? `1w ${s.return_1w >= 0 ? '+' : ''}${s.return_1w.toFixed(1)}%` : null,
+        s.return_1m !== null ? `1m ${s.return_1m >= 0 ? '+' : ''}${s.return_1m.toFixed(1)}%` : null,
+      ].filter(Boolean).join(', ');
+      return `- ${f.asset.name} (${f.asset.id}, ${f.asset.asset_type}): ${s.severity} signal, score ${s.combined_score?.toFixed(2)}σ, ${ret}\n  Analysis: ${f.analysis.slice(0, 300).replace(/\n/g, ' ')}…`;
+    })
+    .join('\n\n');
+
+  const prompt = `You are a senior cross-asset macro strategist writing a daily executive briefing for a portfolio manager.
+
+Today's date: ${date}
+
+## Flagged assets (${flagged.length} total, sorted by signal strength)
+
+${assetLines}
+
+## Your task
+
+Use web search to find what is driving today's market activity. Search for:
+- Recent macro events, central bank news, geopolitical developments
+- Specific catalysts for the most notable movers above
+- Any common thread linking the flagged assets (e.g. risk-off rotation, USD strength, commodity cycle)
+
+Then write a 3-5 paragraph **executive summary** that:
+1. Opens with the dominant market theme or regime for today
+2. Explains the key macro drivers you found (cite sources inline as [Source Name])
+3. Connects those drivers to the specific flagged assets
+4. Closes with your opinion: is this the start of something, a one-day reaction, or noise?
+
+Be direct and opinionated — this is a briefing, not a survey.
+
+After your prose summary, on a new line output exactly:
+REGIME: <one of: risk-on, risk-off, mixed, normal>`;
+
+  try {
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      tools: [
+        {
+          type: 'web_search_20250305' as const,
+          name: 'web_search',
+          max_uses: Math.min(flagged.length + 2, 10),
+        } as Parameters<typeof client.messages.create>[0]['tools'][0],
+      ],
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    // Collect all text blocks (web search produces a mix of text + tool blocks)
+    const textBlocks = message.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text);
+    const fullText = textBlocks.join('\n').trim();
+    if (!fullText) return null;
+
+    // Extract REGIME line
+    const regimeMatch = fullText.match(/REGIME:\s*(risk-on|risk-off|mixed|normal)/i);
+    const market_regime = (regimeMatch?.[1]?.toLowerCase() ?? 'mixed') as MarketSummaryResult['market_regime'];
+
+    // Summary is everything before the REGIME line
+    const summary = fullText.replace(/\nREGIME:.*$/i, '').trim();
+
+    // Extract cited URLs from tool_result blocks (web search results)
+    const sources: { title: string; url: string }[] = [];
+    for (const block of message.content) {
+      // Web search tool results contain an array of search result objects
+      if (block.type === 'tool_result') {
+        const content = (block as { type: string; content?: unknown }).content;
+        if (Array.isArray(content)) {
+          for (const item of content) {
+            if (item && typeof item === 'object' && 'url' in item && 'title' in item) {
+              const { url, title } = item as { url: string; title: string };
+              if (url && title && !sources.some((s) => s.url === url)) {
+                sources.push({ url, title });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return { summary, market_regime, sources };
+  } catch (error) {
+    console.error('Claude market summary error:', error);
     return null;
   }
 }

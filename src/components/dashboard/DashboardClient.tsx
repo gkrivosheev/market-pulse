@@ -1,16 +1,18 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { DashboardAsset, Profile, SortOption, FilterType, FilterSeverity } from '@/types';
+import { DashboardAsset, MarketSummary, Profile, SortOption, FilterType, FilterSeverity } from '@/types';
 import AssetCard from './AssetCard';
 import AddAssetsModal from './AddAssetsModal';
 import Topbar from './Topbar';
 import SummaryStrip from './SummaryStrip';
+import MarketSummaryBanner from './MarketSummaryBanner';
 
 interface Props {
   initialAssets: DashboardAsset[];
   profile: Profile | null;
   lastUpdated: string | null;
+  marketSummary: MarketSummary | null;
   userId: string;
 }
 
@@ -18,6 +20,7 @@ export default function DashboardClient({
   initialAssets,
   profile,
   lastUpdated,
+  marketSummary,
   userId,
 }: Props) {
   const [assets, setAssets] = useState<DashboardAsset[]>(initialAssets);
@@ -95,6 +98,8 @@ export default function DashboardClient({
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         <SummaryStrip counts={counts} />
+
+        {marketSummary && <MarketSummaryBanner summary={marketSummary} />}
 
         {/* Sort/Filter controls */}
         <div className="flex flex-wrap items-center gap-3 mb-6">

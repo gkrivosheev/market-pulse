@@ -119,6 +119,17 @@ export interface DashboardSummary {
   lastUpdated: string | null;
 }
 
+export interface MarketSummary {
+  id: string;
+  date: string;
+  summary: string;
+  market_regime: 'risk-on' | 'risk-off' | 'mixed' | 'normal';
+  flagged_count: number;
+  sources: { title: string; url: string }[];
+  model_used: string;
+  created_at: string;
+}
+
 export type SortOption = 'score' | 'name' | 'daily_change' | 'asset_type';
 export type FilterType = 'all' | 'stock' | 'crypto' | 'metal' | 'bond' | 'future' | 'fx';
 export type FilterSeverity = 'all' | 'extreme' | 'high' | 'elevated' | 'normal';

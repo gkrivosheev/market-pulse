@@ -172,7 +172,7 @@ export async function sendDailyDigest({
     : `Market Pulse — ${formattedDate}: All clear in your watchlist`;
 
   await resend.emails.send({
-    from: 'Market Pulse <digest@yourdomain.com>',
+    from: 'Market Pulse <onboarding@resend.dev>',
     to,
     subject,
     html,

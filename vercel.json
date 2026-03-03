@@ -1,8 +1,16 @@
 {
   "crons": [
     {
-      "path": "/api/cron/daily-update",
+      "path": "/api/cron/fetch-prices",
       "schedule": "30 21 * * 1-5"
+    },
+    {
+      "path": "/api/cron/generate-analyses",
+      "schedule": "45 21 * * 1-5"
+    },
+    {
+      "path": "/api/cron/generate-summary",
+      "schedule": "55 21 * * 1-5"
     }
   ]
 }

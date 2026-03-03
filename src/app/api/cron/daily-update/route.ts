@@ -305,7 +305,7 @@ export async function POST(request: Request) {
         .in('asset_id', flaggedAssets.map((a) => (a as Asset).id))
         .eq('date', today);
 
-      const analysisMap = new Map((freshAnalyses ?? []).map((a) => [a.asset_id, a.analysis as string]));
+      const analysisMap = new Map<string, string>((freshAnalyses ?? []).map((a) => [a.asset_id, a.analysis as string]));
 
       const flaggedContexts = flaggedAssets
         .map((asset) => {
@@ -314,7 +314,7 @@ export async function POST(request: Request) {
           if (!score || !analysis) return null;
           return { asset: asset as Asset, score, analysis };
         })
-        .filter(Boolean);
+        .filter((x): x is NonNullable<typeof x> => x !== null);
 
       if (flaggedContexts.length > 0) {
         const summary = await generateMarketSummary(flaggedContexts, today);
